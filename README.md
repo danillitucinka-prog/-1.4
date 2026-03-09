@@ -1,11 +1,62 @@
-<div align="center">
+# Qvieck Messenger
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Высокофункциональный веб-мессенджер на стеке Node.js, Express, Socket.io и React.
 
-  <h1>Built with AI Studio</h2>
+## Функционал
+- **Система пользователей**: Регистрация, логин, JWT-авторизация.
+- **Чат в реальном времени**: Личные сообщения через Socket.io.
+- **Медиа**: Поддержка загрузки файлов через Multer.
+- **Безопасность**: Хэширование паролей (bcrypt), защита заголовков (helmet), HTTP-only куки.
+- **Интерфейс**: Адаптивный дизайн, темная тема, анимации (motion).
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## Структура проекта
+- `/server.ts` - Точка входа сервера (Express + Vite middleware).
+- `/server/db.ts` - Настройка базы данных (SQLite для демо, легко заменить на MongoDB).
+- `/server/routes/` - API эндпоинты (Auth, Messages, Users).
+- `/server/middleware/` - Промежуточное ПО (Auth check).
+- `/src/` - Фронтенд на React + Tailwind.
+- `/uploads/` - Папка для загруженных медиафайлов.
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Настройка окружения (.env)
+Создайте файл `.env` в корне проекта и добавьте следующие переменные:
+```env
+PORT=3000
+JWT_SECRET=your_super_secret_key_here
+NODE_ENV=development
+# Для MongoDB (если решите переключиться с SQLite)
+# MONGODB_URI=mongodb://localhost:27017/qvieck
+```
 
-</div>
+## Запуск проекта
+1. Установите зависимости: `npm install`
+2. Запустите в режиме разработки: `npm run dev`
+3. Сборка для продакшена: `npm run build`
+4. Запуск сервера: `npm start`
+
+## Развертывание и PM2
+Для того чтобы сервер работал постоянно на VPS/VDS:
+1. Установите PM2: `npm install -g pm2`
+2. Запустите приложение: `pm2 start server.ts --interpreter tsx --name qvieck`
+3. Сохраните список процессов: `pm2 save`
+4. Настройте автозапуск: `pm2 startup`
+
+## Настройка MongoDB
+Проект использует **MongoDB** (Mongoose). 
+1. Создайте кластер в [MongoDB Atlas](https://www.mongodb.com/cloud/atlas).
+2. Получите строку подключения (Connection String).
+3. Добавьте её в `.env`: `MONGODB_URI=mongodb+srv://...`
+
+## Как создать первого Администратора
+1. Зарегистрируйтесь в приложении как обычный пользователь.
+2. Зайдите в панель управления **MongoDB Atlas**.
+3. Перейдите в раздел **Browse Collections** -> база `qvieck` -> коллекция `users`.
+4. Найдите свой документ и измените поле `role` с `"user"` на `"admin"`.
+5. Перезайдите в аккаунт в приложении. Теперь в боковой панели появится иконка щита для перехода в Админ-панель.
+
+## Админ-панель
+Доступна по адресу `/admin`. Позволяет:
+- Видеть статистику системы.
+- Банить и удалять пользователей.
+- Назначать новых администраторов.
+- Модерировать (удалять) любые сообщения.
+- Просматривать системные логи.

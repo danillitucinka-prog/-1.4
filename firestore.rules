@@ -1,0 +1,180 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (uid)
+    // Fields:
+    //   - uid: string (required)
+    //   - username: string (required, 1-50 chars)
+    //   - email: string (required)
+    //   - avatar: string (optional)
+    //   - status: string (optional, "online" | "offline")
+    //   - lastSeen: string (optional, ISO 8601)
+    //   - role: string (optional, "user" | "admin")
+    //
+    // Collection: messages
+    // Document ID: messageId
+    // Fields:
+    //   - senderId: string (required, matches auth.uid)
+    //   - recipientId: string (optional)
+    //   - roomId: string (optional)
+    //   - text: string (required, 1-1000 chars)
+    //   - timestamp: timestamp (required)
+    //
+    // Collection: rooms
+    // Document ID: roomId
+    // Fields:
+    //   - name: string (optional, 1-100 chars)
+    //   - members: list (required, max 100)
+    //   - type: string (required, "private" | "group")
+    //
+    // Collection: channels
+    // Document ID: channelId
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - description: string (optional)
+    //   - createdAt: timestamp (required)
+    //   - createdBy: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "danillitucinka@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'username', 'email']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.username is string && data.username.size() > 0 && data.username.size() <= 50 &&
+             data.email is string && isValidEmail(data.email) &&
+             (!('status' in data) || data.status in ['online', 'offline']) &&
+             (!('lastSeen' in data) || isValidDateString(data.lastSeen)) &&
+             (!('role' in data) || data.role in ['user', 'admin']);
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderId', 'text', 'timestamp']) &&
+             data.senderId == request.auth.uid &&
+             data.text is string && data.text.size() <= 1000 &&
+             data.timestamp is timestamp &&
+             (!('roomId' in data) || data.roomId is string) &&
+             (!('recipientId' in data) || data.recipientId is string) &&
+             (!('status' in data) || data.status in ['sent', 'read']) &&
+             (!('reactions' in data) || data.reactions is map) &&
+             (!('image' in data) || (data.image is string && data.image.size() < 1500000)) &&
+             (!('isEdited' in data) || data.isEdited is bool);
+    }
+
+    function isValidRoom(data) {
+      return data.keys().hasAll(['members', 'type']) &&
+             data.members is list && data.members.size() <= 100 &&
+             request.auth.uid in data.members &&
+             data.type in ['private', 'group'] &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 100));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+    
+    // Messages
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid || 
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.roomId == "global" ||
+        (resource.data.roomId != null && resource.data.roomId.matches("^channel_.*")) ||
+        (resource.data.roomId != null && 
+         exists(/databases/$(database)/documents/rooms/$(resource.data.roomId)) && 
+         request.auth.uid in get(/databases/$(database)/documents/rooms/$(resource.data.roomId)).data.members)
+      );
+      allow create: if isAuthenticated() && isValidMessage(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (resource.data.recipientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reactions'])) ||
+        (resource.data.senderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (resource.data.senderId == request.auth.uid || isAdmin());
+    }
+    
+    // Rooms
+    match /rooms/{roomId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.members;
+      allow create: if isAuthenticated() && isValidRoom(request.resource.data);
+      allow update: if isAuthenticated() && request.auth.uid in resource.data.members && isValidRoom(request.resource.data);
+    }
+
+    // Channels
+    match /channels/{channelId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.createdBy == request.auth.uid);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.createdBy == request.auth.uid);
+    }
+
+    // Typing indicators
+    match /typing/{typingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Calls
+    match /calls/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || resource.data.callerId == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (request.auth.uid == userId || resource.data.callerId == request.auth.uid);
+      allow delete: if isAuthenticated() && (request.auth.uid == userId || resource.data.callerId == request.auth.uid);
+
+      match /callerCandidates/{candidateId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+
+      match /recipientCandidates/{candidateId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+    }
+  }
+}

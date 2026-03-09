@@ -1,0 +1,5 @@
+{
+  "name": "Qvieck Messenger",
+  "description": "A high-functional web messenger with private/group chats, media support, and real-time notifications.",
+  "requestFramePermissions": ["notifications", "camera", "microphone"]
+}
