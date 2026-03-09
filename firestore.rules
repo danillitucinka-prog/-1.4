@@ -93,7 +93,14 @@ service cloud.firestore {
              (!('status' in data) || data.status in ['sent', 'read']) &&
              (!('reactions' in data) || data.reactions is map) &&
              (!('image' in data) || (data.image is string && data.image.size() < 1500000)) &&
-             (!('isEdited' in data) || data.isEdited is bool);
+             (!('voice' in data) || (data.voice is string && data.voice.size() < 1500000)) &&
+             (!('isEdited' in data) || data.isEdited is bool) &&
+             (!('isPinned' in data) || data.isPinned is bool) &&
+             (!('replyTo' in data) || data.replyTo is map) &&
+             (!('sticker' in data) || data.sticker is string) &&
+             (!('poll' in data) || (data.poll is map && data.poll.question is string && data.poll.options is list)) &&
+             (!('senderAvatar' in data) || (data.senderAvatar is string || data.senderAvatar == null)) &&
+             (!('senderBio' in data) || (data.senderBio is string || data.senderBio == null));
     }
 
     function isValidRoom(data) {
@@ -132,7 +139,8 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidMessage(request.resource.data);
       allow update: if isAuthenticated() && (
         (resource.data.recipientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reactions'])) ||
-        (resource.data.senderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])) ||
+        (resource.data.senderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'text', 'isEdited', 'isPinned'])) ||
+        (resource.data.roomId != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'isPinned', 'poll'])) ||
         isAdmin()
       );
       allow delete: if isAuthenticated() && (resource.data.senderId == request.auth.uid || isAdmin());

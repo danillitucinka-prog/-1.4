@@ -28,6 +28,12 @@ export default function ChatRoom() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceBlob, setVoiceBlob] = useState<string | null>(null);
+  const [chatWallpaper, setChatWallpaper] = useState<string>(localStorage.getItem("chatWallpaper") || "");
+  const [showWallpaperPicker, setShowWallpaperPicker] = useState(false);
+  const [showStickerPicker, setShowStickerPicker] = useState(false);
+  const [showPollCreator, setShowPollCreator] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState(["", ""]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const typingTimeoutRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -253,6 +259,96 @@ export default function ChatRoom() {
     }
   };
 
+  const setWallpaper = (url: string) => {
+    setChatWallpaper(url);
+    localStorage.setItem("chatWallpaper", url);
+    setShowWallpaperPicker(false);
+  };
+
+  const sendSticker = async (stickerUrl: string) => {
+    if (!user || !recipientId) return;
+    try {
+      const messageData: any = {
+        senderId: user.id,
+        senderName: user.username,
+        senderAvatar: user.avatar || null,
+        senderBio: user.bio || null,
+        text: "Sticker",
+        sticker: stickerUrl,
+        timestamp: Timestamp.now(),
+        status: "sent"
+      };
+
+      if (recipientId === "global" || recipientId.startsWith("channel_")) {
+        messageData.roomId = recipientId;
+      } else {
+        messageData.recipientId = recipientId;
+      }
+
+      await addDoc(collection(db, "messages"), messageData);
+      setShowStickerPicker(false);
+    } catch (error) {
+      console.error("Failed to send sticker", error);
+    }
+  };
+
+  const createPoll = async () => {
+    if (!user || !recipientId || !pollQuestion.trim() || pollOptions.some(o => !o.trim())) return;
+    try {
+      const messageData: any = {
+        senderId: user.id,
+        senderName: user.username,
+        senderAvatar: user.avatar || null,
+        senderBio: user.bio || null,
+        text: "Poll: " + pollQuestion,
+        poll: {
+          question: pollQuestion.trim(),
+          options: pollOptions.map(o => ({ text: o.trim(), votes: [] }))
+        },
+        timestamp: Timestamp.now(),
+        status: "sent"
+      };
+
+      if (recipientId === "global" || recipientId.startsWith("channel_")) {
+        messageData.roomId = recipientId;
+      } else {
+        messageData.recipientId = recipientId;
+      }
+
+      await addDoc(collection(db, "messages"), messageData);
+      setShowPollCreator(false);
+      setPollQuestion("");
+      setPollOptions(["", ""]);
+    } catch (error) {
+      console.error("Failed to create poll", error);
+    }
+  };
+
+  const voteInPoll = async (messageId: string, optionIndex: number) => {
+    if (!user) return;
+    try {
+      const msgRef = doc(db, "messages", messageId);
+      const msgSnap = await getDoc(msgRef);
+      if (msgSnap.exists()) {
+        const data = msgSnap.data();
+        const poll = { ...data.poll };
+        
+        // Remove user's vote from all options first (single choice poll)
+        poll.options = poll.options.map((opt: any) => ({
+          ...opt,
+          votes: opt.votes.filter((uid: string) => uid !== user.id)
+        }));
+        
+        // Add user's vote to selected option
+        poll.options[optionIndex].votes.push(user.id);
+        
+        await updateDoc(msgRef, { poll });
+      }
+    } catch (error) {
+      console.error("Vote failed", error);
+    }
+  };
+
   const handleTyping = () => {
     if (!user || !recipientId) return;
     
@@ -306,13 +402,27 @@ export default function ChatRoom() {
     }
   };
 
-  const addReaction = async (messageId: string, emoji: string) => {
+  const toggleReaction = async (messageId: string, emoji: string) => {
     if (!user) return;
     try {
       const msgRef = doc(db, "messages", messageId);
-      await updateDoc(msgRef, {
-        [`reactions.${user.id}`]: emoji
-      });
+      const msgSnap = await getDoc(msgRef);
+      if (msgSnap.exists()) {
+        const data = msgSnap.data();
+        const currentReaction = data.reactions?.[user.id];
+        
+        if (currentReaction === emoji) {
+          // Remove reaction
+          await updateDoc(msgRef, {
+            [`reactions.${user.id}`]: deleteField()
+          });
+        } else {
+          // Add/Change reaction
+          await updateDoc(msgRef, {
+            [`reactions.${user.id}`]: emoji
+          });
+        }
+      }
     } catch (error) {
       console.error("Reaction failed", error);
     }
@@ -413,9 +523,42 @@ export default function ChatRoom() {
             >
               <Search size={20} />
             </button>
+            <button 
+              onClick={() => setShowWallpaperPicker(!showWallpaperPicker)}
+              className={`p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors ${showWallpaperPicker ? "text-emerald-500" : "text-zinc-500"}`}
+            >
+              <ImageIcon size={20} />
+            </button>
+            <button 
+              onClick={() => setShowPollCreator(true)}
+              className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500"
+            >
+              <Check size={20} />
+            </button>
             <button className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500"><MoreVertical size={20} /></button>
           </div>
         </header>
+
+        {showWallpaperPicker && (
+          <div className="p-4 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top duration-200">
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">{language === 'ru' ? 'Выберите фон' : 'Choose Wallpaper'}</p>
+            <div className="grid grid-cols-4 gap-2">
+              {["", "https://images.unsplash.com/photo-1557683316-973673baf926?w=400", "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=400", "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=400"].map((url, i) => (
+                <button 
+                  key={i}
+                  onClick={() => setWallpaper(url)}
+                  className={`h-12 rounded-lg border-2 transition-all overflow-hidden ${chatWallpaper === url ? "border-emerald-500 scale-95" : "border-transparent"}`}
+                >
+                  {url ? (
+                    <img src={url} alt="Wallpaper" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-full h-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-400">Default</div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {pinnedMessages.length > 0 && (
           <div className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/10 border-b border-emerald-100 dark:border-emerald-900/30 flex items-center justify-between animate-in slide-in-from-top duration-200">
@@ -452,7 +595,11 @@ export default function ChatRoom() {
         )}
   
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-zinc-50 dark:bg-zinc-950/50">
+        <div 
+          className="flex-1 overflow-y-auto p-4 space-y-4 bg-zinc-50 dark:bg-zinc-950/50 relative"
+          style={chatWallpaper ? { backgroundImage: `url(${chatWallpaper})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+        >
+          {chatWallpaper && <div className="absolute inset-0 bg-white/10 dark:bg-black/20 pointer-events-none" />}
           <AnimatePresence initial={false}>
             {filteredMessages.map((msg) => (
               <motion.div
@@ -495,7 +642,41 @@ export default function ChatRoom() {
                         <audio src={msg.voice} controls className="max-w-full h-10 filter invert dark:invert-0" />
                       </div>
                     )}
-                    <p className="text-sm">{msg.text}</p>
+                    {msg.sticker && (
+                      <div className="mb-2">
+                        <img src={msg.sticker} alt="Sticker" className="w-32 h-32 object-contain" referrerPolicy="no-referrer" />
+                      </div>
+                    )}
+                    {msg.poll && (
+                      <div className="mb-2 p-3 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                        <p className="font-bold text-sm mb-3">{msg.poll.question}</p>
+                        <div className="space-y-2">
+                          {msg.poll.options.map((opt: any, idx: number) => {
+                            const totalVotes = msg.poll.options.reduce((acc: number, o: any) => acc + o.votes.length, 0);
+                            const percentage = totalVotes > 0 ? Math.round((opt.votes.length / totalVotes) * 100) : 0;
+                            const hasVoted = opt.votes.includes(user?.id);
+                            
+                            return (
+                              <button 
+                                key={idx}
+                                onClick={() => voteInPoll(msg.id, idx)}
+                                className="w-full relative h-10 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700 group/opt"
+                              >
+                                <div 
+                                  className={`absolute inset-0 transition-all duration-500 ${hasVoted ? "bg-emerald-500/20" : "bg-zinc-100 dark:bg-zinc-800"}`}
+                                  style={{ width: `${percentage}%` }}
+                                />
+                                <div className="absolute inset-0 px-3 flex items-center justify-between text-xs">
+                                  <span className="font-medium">{opt.text}</span>
+                                  <span className="text-zinc-500">{percentage}% ({opt.votes.length})</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {msg.text !== "Sticker" && !msg.poll && <p className="text-sm">{msg.text}</p>}
                     
                     {msg.isEdited && (
                       <span className="text-[8px] opacity-50 block mt-0.5 italic">
@@ -560,8 +741,8 @@ export default function ChatRoom() {
                       {["❤️", "👍", "😂"].map(emoji => (
                         <button 
                           key={emoji}
-                          onClick={() => addReaction(msg.id, emoji)}
-                          className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-xs"
+                          onClick={() => toggleReaction(msg.id, emoji)}
+                          className={`p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-xs transition-transform hover:scale-125 ${msg.reactions?.[user?.id] === emoji ? "bg-emerald-100 dark:bg-emerald-900/40 scale-110" : ""}`}
                         >
                           {emoji}
                         </button>
@@ -654,9 +835,37 @@ export default function ChatRoom() {
                 placeholder={isRecording ? "Recording..." : t("typeMessage")}
                 className="w-full pl-4 pr-10 py-2.5 bg-zinc-100 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm disabled:opacity-50"
               />
-            <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-emerald-500">
+            <button 
+              type="button" 
+              onClick={() => setShowStickerPicker(!showStickerPicker)}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors ${showStickerPicker ? "text-emerald-500" : "text-zinc-500 hover:text-emerald-500"}`}
+            >
               <Smile size={20} />
             </button>
+            {showStickerPicker && (
+              <div className="absolute bottom-full right-0 mb-2 p-3 bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 w-64 animate-in fade-in zoom-in duration-200">
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    "https://fonts.gstatic.com/s/e/notoemoji/latest/1f600/512.gif",
+                    "https://fonts.gstatic.com/s/e/notoemoji/latest/1f60d/512.gif",
+                    "https://fonts.gstatic.com/s/e/notoemoji/latest/1f602/512.gif",
+                    "https://fonts.gstatic.com/s/e/notoemoji/latest/1f62d/512.gif",
+                    "https://fonts.gstatic.com/s/e/notoemoji/latest/1f525/512.gif",
+                    "https://fonts.gstatic.com/s/e/notoemoji/latest/1f44d/512.gif",
+                    "https://fonts.gstatic.com/s/e/notoemoji/latest/1f389/512.gif",
+                    "https://fonts.gstatic.com/s/e/notoemoji/latest/2764_fe0f/512.gif"
+                  ].map((url, i) => (
+                    <button 
+                      key={i}
+                      onClick={() => sendSticker(url)}
+                      className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-transform hover:scale-110"
+                    >
+                      <img src={url} alt="Sticker" className="w-10 h-10" referrerPolicy="no-referrer" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           {!newMessage.trim() && !imagePreview && !voiceBlob && !editingMessage ? (
             <button
@@ -687,6 +896,81 @@ export default function ChatRoom() {
 
       {/* User Profile Modal */}
       <AnimatePresence>
+        {showPollCreator && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-zinc-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl"
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold">{language === 'ru' ? 'Создать опрос' : 'Create Poll'}</h3>
+                  <button onClick={() => setShowPollCreator(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full">
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 block">{language === 'ru' ? 'Вопрос' : 'Question'}</label>
+                    <input 
+                      type="text"
+                      value={pollQuestion}
+                      onChange={(e) => setPollQuestion(e.target.value)}
+                      placeholder={language === 'ru' ? 'О чем вы хотите спросить?' : 'What do you want to ask?'}
+                      className="w-full px-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 block">{language === 'ru' ? 'Варианты' : 'Options'}</label>
+                    {pollOptions.map((opt, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <input 
+                          type="text"
+                          value={opt}
+                          onChange={(e) => {
+                            const newOpts = [...pollOptions];
+                            newOpts[idx] = e.target.value;
+                            setPollOptions(newOpts);
+                          }}
+                          placeholder={`${language === 'ru' ? 'Вариант' : 'Option'} ${idx + 1}`}
+                          className="flex-1 px-4 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-sm"
+                        />
+                        {pollOptions.length > 2 && (
+                          <button 
+                            onClick={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))}
+                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {pollOptions.length < 5 && (
+                      <button 
+                        onClick={() => setPollOptions([...pollOptions, ""])}
+                        className="text-sm text-emerald-500 font-bold hover:underline"
+                      >
+                        + {language === 'ru' ? 'Добавить вариант' : 'Add Option'}
+                      </button>
+                    )}
+                  </div>
+                  
+                  <button 
+                    onClick={createPoll}
+                    disabled={!pollQuestion.trim() || pollOptions.some(o => !o.trim())}
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold rounded-2xl transition-all shadow-lg shadow-emerald-500/20 mt-4"
+                  >
+                    {language === 'ru' ? 'Создать' : 'Create'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
         {selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <motion.div 
