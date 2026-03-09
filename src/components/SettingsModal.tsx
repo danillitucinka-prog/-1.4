@@ -16,6 +16,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
   const [username, setUsername] = useState(user?.username || "");
   const [avatar, setAvatar] = useState(user?.avatar || "");
+  const [bio, setBio] = useState(user?.bio || "");
   const [loading, setLoading] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
@@ -28,7 +29,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       await updateDoc(doc(db, "users", user.id), {
         username: username.trim(),
-        avatar: avatar
+        avatar: avatar,
+        bio: bio.trim()
       });
       onClose();
     } catch (error) {
@@ -134,6 +136,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="w-full px-4 py-2 bg-zinc-100 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{language === 'ru' ? 'О себе' : 'Bio'}</label>
+                  <textarea
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    className="w-full px-4 py-2 bg-zinc-100 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all resize-none h-20"
+                    placeholder={language === 'ru' ? 'Расскажите о себе...' : 'Tell us about yourself...'}
                   />
                 </div>
                 <div className="space-y-2">

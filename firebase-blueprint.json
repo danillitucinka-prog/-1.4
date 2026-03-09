@@ -9,6 +9,7 @@
         "username": { "type": "string" },
         "email": { "type": "string" },
         "avatar": { "type": "string" },
+        "bio": { "type": "string" },
         "status": { "type": "string", "enum": ["online", "offline"] },
         "lastSeen": { "type": "string", "format": "date-time" }
       },
@@ -23,7 +24,11 @@
         "recipientId": { "type": "string" },
         "roomId": { "type": "string" },
         "text": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
+        "timestamp": { "type": "string", "format": "date-time" },
+        "replyTo": { "type": "object" },
+        "voice": { "type": "string" },
+        "image": { "type": "string" },
+        "reactions": { "type": "object" }
       },
       "required": ["senderId", "text", "timestamp"]
     },
@@ -34,7 +39,8 @@
       "properties": {
         "name": { "type": "string" },
         "members": { "type": "array", "items": { "type": "string" } },
-        "type": { "type": "string", "enum": ["private", "group"] }
+        "type": { "type": "string", "enum": ["private", "group"] },
+        "pinnedMessages": { "type": "array", "items": { "type": "string" } }
       },
       "required": ["members", "type"]
     },
