@@ -16,6 +16,7 @@ interface AppUser {
   role: string;
   avatar?: string;
   status?: string;
+  bio?: string;
 }
 
 interface AuthContextType {
@@ -95,7 +96,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: firebaseUser.email || data.email || "guest@example.com",
             role: isAdminEmail ? "admin" : (data.role || "user"),
             avatar: data.avatar,
-            status: data.status
+            status: data.status,
+            bio: data.bio
           });
         } else {
           // Fallback for users without a document yet (e.g. just signed in anonymously)
