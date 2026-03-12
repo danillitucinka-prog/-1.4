@@ -8,6 +8,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LanguageProvider, useLanguage } from "./context/LanguageContext";
 import { CallProvider } from "./context/CallContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import Login from "./components/Login";
 import Register from "./components/Register";
 import ChatLayout from "./components/ChatLayout";
@@ -25,28 +26,30 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <ErrorBoundary>
-      <LanguageProvider>
-        <AuthProvider>
-          <CallProvider>
-            <Router>
-              <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-300">
-                <Routes>
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/register" element={<Register />} />
-                  <Route 
-                    path="/*" 
-                    element={
-                      <ProtectedRoute>
-                        <ChatLayout />
-                      </ProtectedRoute>
-                    } 
-                  />
-                </Routes>
-              </div>
-            </Router>
-          </CallProvider>
-        </AuthProvider>
-      </LanguageProvider>
+      <ThemeProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <CallProvider>
+              <Router>
+                <div className="min-h-screen bg-theme-bg text-zinc-900 dark:text-zinc-100 transition-colors duration-300">
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/register" element={<Register />} />
+                    <Route 
+                      path="/*" 
+                      element={
+                        <ProtectedRoute>
+                          <ChatLayout />
+                        </ProtectedRoute>
+                      } 
+                    />
+                  </Routes>
+                </div>
+              </Router>
+            </CallProvider>
+          </AuthProvider>
+        </LanguageProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

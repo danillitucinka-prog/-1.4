@@ -128,6 +128,7 @@ service cloud.firestore {
     // Messages
     match /messages/{messageId} {
       allow read: if isAuthenticated() && (
+        isAdmin() ||
         resource.data.senderId == request.auth.uid || 
         resource.data.recipientId == request.auth.uid ||
         resource.data.roomId == "global" ||

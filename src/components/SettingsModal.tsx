@@ -3,6 +3,7 @@ import { X, User, Globe, Moon, Sun, Save, Settings, Trash2, Camera, Upload, BarC
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
+import { useTheme, ThemeType } from "../context/ThemeContext";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -14,6 +15,7 @@ interface SettingsModalProps {
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { user, cleanupGuests, deleteAllUsers, deleteAllMessages, deleteAllChannels } = useAuth();
   const { t, language, setLanguage } = useLanguage();
+  const { theme, setTheme } = useTheme();
   const [username, setUsername] = useState(user?.username || "");
   const [avatar, setAvatar] = useState(user?.avatar || "");
   const [bio, setBio] = useState(user?.bio || "");
@@ -158,6 +160,35 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       {t("copy")}
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Theme Selection */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+                  <Moon size={16} />
+                  {t("theme")}
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'classic', label: 'Classic', color: 'bg-emerald-500' },
+                    { id: 'luxury', label: 'Luxury', color: 'bg-zinc-900 border border-amber-500' },
+                    { id: 'brutalist', label: 'Brutalist', color: 'bg-white border-2 border-black' },
+                    { id: 'organic', label: 'Organic', color: 'bg-[#5a5a40]' }
+                  ].map((tItem) => (
+                    <button
+                      key={tItem.id}
+                      onClick={() => setTheme(tItem.id as ThemeType)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                        theme === tItem.id 
+                          ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10" 
+                          : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-full ${tItem.color}`}></div>
+                      <span className="text-sm font-medium">{tItem.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 

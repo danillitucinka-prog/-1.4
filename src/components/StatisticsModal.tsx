@@ -58,17 +58,27 @@ export default function StatisticsModal({ isOpen, onClose }: StatisticsModalProp
           });
         }
 
-        // This is a bit heavy for client side if there are many messages, 
-        // but for a small app it's fine. In production we'd use aggregation or cloud functions.
-        const recentMsgsQuery = query(
-          collection(db, "messages"), 
-          where("timestamp", ">=", Timestamp.fromDate(last7Days[0].fullDate))
-        );
-        const recentMsgsSnap = await getDocs(recentMsgsQuery);
+        // For normal users, only query their own messages to avoid permission errors
+        // For admins, query all messages
+        let recentMsgsSnap;
+        if (user.role === 'admin') {
+          const recentMsgsQuery = query(
+            collection(db, "messages"), 
+            where("timestamp", ">=", Timestamp.fromDate(last7Days[0].fullDate))
+          );
+          recentMsgsSnap = await getDocs(recentMsgsQuery);
+        } else {
+          // Query by senderId only and filter by date in memory to avoid composite index requirement
+          const personalMsgsQuery = query(
+            collection(db, "messages"), 
+            where("senderId", "==", user.id)
+          );
+          recentMsgsSnap = await getDocs(personalMsgsQuery);
+        }
         
         recentMsgsSnap.docs.forEach(doc => {
           const msgDate = doc.data().timestamp?.toDate();
-          if (msgDate) {
+          if (msgDate && msgDate >= last7Days[0].fullDate) {
             const dayIndex = last7Days.findIndex(d => 
               d.fullDate.getDate() === msgDate.getDate() && 
               d.fullDate.getMonth() === msgDate.getMonth()
@@ -164,39 +174,48 @@ export default function StatisticsModal({ isOpen, onClose }: StatisticsModalProp
                       <Calendar size={16} />
                       {t("activity")} (7 {language === 'ru' ? 'дней' : 'days'})
                     </h3>
-                    <div className="h-64 w-full bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl p-4 border border-zinc-100 dark:border-zinc-800">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888822" />
-                          <XAxis 
-                            dataKey="date" 
-                            axisLine={false} 
-                            tickLine={false} 
-                            tick={{ fontSize: 12, fill: '#888888' }} 
-                          />
-                          <YAxis 
-                            axisLine={false} 
-                            tickLine={false} 
-                            tick={{ fontSize: 12, fill: '#888888' }} 
-                          />
-                          <Tooltip 
-                            contentStyle={{ 
-                              backgroundColor: '#18181b', 
-                              border: 'none', 
-                              borderRadius: '12px',
-                              color: '#fff'
-                            }}
-                            itemStyle={{ color: '#10b981' }}
-                            cursor={{ fill: '#88888811' }}
-                          />
-                          <Bar 
-                            dataKey="count" 
-                            fill="#10b981" 
-                            radius={[4, 4, 0, 0]} 
-                            barSize={30}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
+                    <div className="h-64 w-full bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl p-4 border border-zinc-100 dark:border-zinc-800 overflow-hidden relative">
+                      {chartData && chartData.length > 0 ? (
+                        <div className="absolute inset-0 p-4">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888822" />
+                              <XAxis 
+                                dataKey="date" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fontSize: 10, fill: '#888888' }} 
+                              />
+                              <YAxis 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fontSize: 10, fill: '#888888' }} 
+                              />
+                              <Tooltip 
+                                contentStyle={{ 
+                                  backgroundColor: '#18181b', 
+                                  border: 'none', 
+                                  borderRadius: '12px',
+                                  color: '#fff',
+                                  fontSize: '12px'
+                                }}
+                                itemStyle={{ color: '#10b981' }}
+                                cursor={{ fill: '#88888811' }}
+                              />
+                              <Bar 
+                                dataKey="count" 
+                                fill="#10b981" 
+                                radius={[4, 4, 0, 0]} 
+                                barSize={20}
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-zinc-400 text-xs">
+                          {loading ? "Loading chart..." : "No activity data for the last 7 days"}
+                        </div>
+                      )}
                     </div>
                   </div>
 

@@ -1,1 +1,97 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Anton&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Cormorant Garamond", serif;
+  --font-display: "Anton", sans-serif;
+  --font-tech: "Space Grotesk", sans-serif;
+}
+
+:root {
+  /* Classic Theme (Default) */
+  --theme-bg: #ffffff;
+  --theme-sidebar: #f9fafb;
+  --theme-accent: #10b981;
+  --theme-accent-hover: #059669;
+  --theme-text: #18181b;
+  --theme-text-muted: #71717a;
+  --theme-border: #e4e4e7;
+  --theme-radius: 1rem;
+  --theme-font: var(--font-sans);
+}
+
+.dark {
+  --theme-bg: #09090b;
+  --theme-sidebar: #000000;
+  --theme-accent: #10b981;
+  --theme-accent-hover: #059669;
+  --theme-text: #f4f4f5;
+  --theme-text-muted: #a1a1aa;
+  --theme-border: #27272a;
+}
+
+/* Luxury Theme */
+[data-theme='luxury'] {
+  --theme-bg: #0a0a0a;
+  --theme-sidebar: #000000;
+  --theme-accent: #d4af37; /* Gold */
+  --theme-accent-hover: #b8860b;
+  --theme-text: #ffffff;
+  --theme-text-muted: #8e8e8e;
+  --theme-border: #1a1a1a;
+  --theme-radius: 0.25rem;
+  --theme-font: var(--font-serif);
+}
+
+/* Brutalist Theme */
+[data-theme='brutalist'] {
+  --theme-bg: #ffffff;
+  --theme-sidebar: #ffffff;
+  --theme-accent: #00ff00; /* Neon Green */
+  --theme-accent-hover: #00cc00;
+  --theme-text: #000000;
+  --theme-text-muted: #000000;
+  --theme-border: #000000;
+  --theme-radius: 0px;
+  --theme-font: var(--font-tech);
+  --theme-border-width: 2px;
+}
+
+/* Organic Theme */
+[data-theme='organic'] {
+  --theme-bg: #f5f5f0;
+  --theme-sidebar: #ebebe0;
+  --theme-accent: #5a5a40; /* Olive */
+  --theme-accent-hover: #4a4a30;
+  --theme-text: #1a1a1a;
+  --theme-text-muted: #6b6b5b;
+  --theme-border: #d1d1c1;
+  --theme-radius: 2rem;
+  --theme-font: var(--font-sans);
+}
+
+body {
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
+  font-family: var(--theme-font);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Global overrides using theme variables */
+.bg-theme-bg { background-color: var(--theme-bg); }
+.bg-theme-sidebar { background-color: var(--theme-sidebar); }
+.bg-theme-accent { background-color: var(--theme-accent); }
+.text-theme-accent { color: var(--theme-accent); }
+.border-theme-border { border-color: var(--theme-border); }
+.rounded-theme { border-radius: var(--theme-radius); }
+
+/* Brutalist specific overrides */
+[data-theme='brutalist'] .border {
+  border-width: var(--theme-border-width);
+  border-color: #000;
+}
+[data-theme='brutalist'] .shadow-lg {
+  box-shadow: 4px 4px 0px #000;
+}
