@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { Search, MessageSquare, Users, Settings, LogOut, User as UserIcon, ShieldAlert, Globe, Share2, Check, Plus, X, Github } from "lucide-react";
+import { Search, MessageSquare, Users, Settings, LogOut, User as UserIcon, ShieldAlert, Globe, Share2, Check, Plus, X, Github, Trash2, Bot } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import ThemeToggle from "./ThemeToggle";
 import { motion, AnimatePresence } from "motion/react";
-import { collection, onSnapshot, query, where, orderBy, addDoc, Timestamp, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, addDoc, Timestamp, limit, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { useLanguage } from "../context/LanguageContext";
 import SettingsModal from "./SettingsModal";
+import StatisticsModal from "./StatisticsModal";
+import { BarChart3 } from "lucide-react";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 export default function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user, logout, deleteSingleUser, cleanupGuests } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [channels, setChannels] = useState<any[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<{[key: string]: number}>({});
@@ -29,6 +31,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { t, language, setLanguage } = useLanguage();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isStatisticsOpen, setIsStatisticsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const shareUrl = "https://ais-pre-m5tly2sheggkex6ruxykwe-114628490450.europe-west3.run.app";
@@ -108,7 +111,7 @@ export default function Sidebar() {
 
   useEffect(() => {
     // Listen to the most recent messages to update last message preview
-    const q = query(collection(db, "messages"), orderBy("createdAt", "desc"), limit(50));
+    const q = query(collection(db, "messages"), orderBy("timestamp", "desc"), limit(50));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const newLastMessages = { ...lastMessages };
       snapshot.docs.forEach(doc => {
@@ -123,10 +126,23 @@ export default function Sidebar() {
     return () => unsubscribe();
   }, []);
 
-  const filteredUsers = users.filter(u => 
-    u.username.toLowerCase().includes(search.toLowerCase()) ||
-    u.id.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    const isGuest = u.email === "guest@example.com" || (u.username && u.username.startsWith("Guest_"));
+    const isMe = u.id === user?.id;
+    const isAdmin = user?.role === 'admin';
+    
+    // If I'm an admin, I see everyone.
+    // If I'm not an admin, I don't see guests (unless it's me).
+    if (!isAdmin && isGuest && !isMe) return false;
+
+    const query = search.toLowerCase();
+    return u.username.toLowerCase().includes(query) ||
+           u.id.toLowerCase().includes(query) ||
+           (u.email && u.email.toLowerCase().includes(query));
+  });
+
+  const isEmailSearch = search.includes("@") && search.includes(".");
+  const emailFound = filteredUsers.some(u => u.email?.toLowerCase() === search.toLowerCase());
 
   return (
     <aside className="w-80 border-r border-zinc-200 dark:border-zinc-800 flex flex-col bg-zinc-50 dark:bg-zinc-950">
@@ -156,6 +172,13 @@ export default function Sidebar() {
           >
             <Github size={20} />
           </a>
+          <button 
+            onClick={() => setIsStatisticsOpen(true)}
+            className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors"
+            title={t("statistics")}
+          >
+            <BarChart3 size={20} />
+          </button>
           <button 
             onClick={() => setIsSettingsOpen(true)}
             className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 transition-colors"
@@ -209,6 +232,30 @@ export default function Sidebar() {
       <div className="flex-1 overflow-y-auto">
         {activeTab === "chats" ? (
           <>
+            {/* Email Search Helper */}
+            {isEmailSearch && !emailFound && (
+              <div className="p-4 mx-4 mb-4 bg-blue-500/10 dark:bg-blue-500/5 rounded-2xl border border-blue-500/20">
+                <p className="text-xs text-zinc-500 mb-2">{t("noUserFound")}</p>
+                <button 
+                  onClick={async () => {
+                    // Try to find user by exact email in Firestore
+                    const q = query(collection(db, "users"), where("email", "==", search.toLowerCase()));
+                    const snap = await getDocs(q);
+                    if (!snap.empty) {
+                      const foundUser = snap.docs[0];
+                      navigate(`/chat/${foundUser.id}`);
+                      setSearch("");
+                    } else {
+                      alert(t("noUserFound"));
+                    }
+                  }}
+                  className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-xl transition-all"
+                >
+                  {t("searchByEmail")}
+                </button>
+              </div>
+            )}
+
             {/* Share App Card */}
             <div className="p-4 mx-4 mb-4 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-2xl border border-emerald-500/20">
               <div className="flex items-start gap-3 mb-3">
@@ -238,6 +285,25 @@ export default function Sidebar() {
               </div>
             </div>
 
+            {/* AI Assistant Chat */}
+            <NavLink
+              to="/chat/ai_assistant"
+              className={({ isActive }) => cn(
+                "flex items-center gap-3 p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer",
+                isActive && "bg-emerald-50 dark:bg-emerald-900/10 border-r-4 border-emerald-500"
+              )}
+            >
+              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/20 rounded-full flex items-center justify-center text-purple-600">
+                <Bot size={24} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold truncate">{t("aiAssistant")}</h3>
+                <p className="text-sm text-zinc-500 truncate">
+                  {t("aiAssistantDesc")}
+                </p>
+              </div>
+            </NavLink>
+
             {/* Global Chat */}
             <NavLink
               to="/chat/global"
@@ -259,52 +325,85 @@ export default function Sidebar() {
               </div>
             </NavLink>
 
+            {user?.role === 'admin' && filteredUsers.some(u => u.username?.startsWith("Guest_")) && (
+              <div className="px-4 py-2">
+                <button
+                  onClick={() => {
+                    if (window.confirm(t("cleanupGuests") + "?")) {
+                      cleanupGuests();
+                    }
+                  }}
+                  className="w-full py-2 bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-xl hover:bg-red-200 dark:hover:bg-red-900/40 transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={14} />
+                  {t("cleanupGuests")}
+                </button>
+              </div>
+            )}
+
             {filteredUsers.map(u => (
-              <NavLink
-                key={u.id}
-                to={`/chat/${u.id}`}
-                className={({ isActive }) => cn(
-                  "flex items-center gap-3 p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer",
-                  isActive && "bg-emerald-50 dark:bg-emerald-900/10 border-r-4 border-emerald-500"
-                )}
-              >
-                <div className="relative">
-                  <div className="w-12 h-12 bg-zinc-200 dark:bg-zinc-800 rounded-full flex items-center justify-center overflow-hidden">
-                    {u.avatar ? (
-                      <img src={u.avatar} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <UserIcon className="text-zinc-400" size={24} />
-                    )}
-                  </div>
-                  {u.status === "online" && (
-                    <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-zinc-950 rounded-full"></div>
+              <div key={u.id} className="group relative">
+                <NavLink
+                  to={`/chat/${u.id}`}
+                  className={({ isActive }) => cn(
+                    "flex items-center gap-3 p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer",
+                    isActive && "bg-emerald-50 dark:bg-emerald-900/10 border-r-4 border-emerald-500"
                   )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-baseline">
-                    <h3 className="font-semibold truncate">{u.username}</h3>
-                    <span className="text-[10px] text-zinc-500">
-                      {lastMessages[[user?.id, u.id].sort().join("_")]
-                        ? new Date(lastMessages[[user?.id, u.id].sort().join("_")].createdAt?.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        : (u.lastSeen ? new Date(u.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "")}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <p className="text-sm text-zinc-500 truncate flex-1">
-                      {lastMessages[[user?.id, u.id].sort().join("_")]
-                        ? lastMessages[[user?.id, u.id].sort().join("_")].text
-                        : (search && u.id.toLowerCase().includes(search.toLowerCase()) && !u.username.toLowerCase().includes(search.toLowerCase()) 
-                          ? `ID: ${u.id}` 
-                          : "Click to start chatting...")}
-                    </p>
-                    {unreadCounts[u.id] > 0 && (
-                      <span className="ml-2 px-2 py-0.5 bg-emerald-500 text-white text-[10px] font-bold rounded-full min-w-[20px] text-center">
-                        {unreadCounts[u.id]}
-                      </span>
+                >
+                  <div className="relative">
+                    <div className="w-12 h-12 bg-zinc-200 dark:bg-zinc-800 rounded-full flex items-center justify-center overflow-hidden">
+                      {u.avatar ? (
+                        <img src={u.avatar} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <UserIcon className="text-zinc-400" size={24} />
+                      )}
+                    </div>
+                    {u.status === "online" && (
+                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-zinc-950 rounded-full"></div>
                     )}
                   </div>
-                </div>
-              </NavLink>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline">
+                      <h3 className="font-semibold truncate">{u.username}</h3>
+                      <span className="text-[10px] text-zinc-500">
+                        {lastMessages[[user?.id, u.id].sort().join("_")]
+                          ? new Date(lastMessages[[user?.id, u.id].sort().join("_")].createdAt?.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : (u.lastSeen ? new Date(u.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-zinc-500 truncate flex-1">
+                        {lastMessages[[user?.id, u.id].sort().join("_")]
+                          ? lastMessages[[user?.id, u.id].sort().join("_")].text
+                          : (search && u.id.toLowerCase().includes(search.toLowerCase()) && !u.username.toLowerCase().includes(search.toLowerCase()) 
+                            ? `ID: ${u.id}` 
+                            : "Click to start chatting...")}
+                      </p>
+                      {unreadCounts[u.id] > 0 && (
+                        <span className="ml-2 px-2 py-0.5 bg-emerald-500 text-white text-[10px] font-bold rounded-full min-w-[20px] text-center">
+                          {unreadCounts[u.id]}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </NavLink>
+                
+                {user?.role === 'admin' && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (window.confirm(t("confirmDeleteUser"))) {
+                        deleteSingleUser(u.id);
+                      }
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg"
+                    title={t("deleteUser")}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
             ))}
           </>
         ) : (
@@ -351,6 +450,7 @@ export default function Sidebar() {
         )}
       </div>
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <StatisticsModal isOpen={isStatisticsOpen} onClose={() => setIsStatisticsOpen(false)} />
 
       {/* Create Channel Modal */}
       <AnimatePresence>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Send, Paperclip, MoreVertical, Phone, Video, Smile, Trash2, Edit2, Check, CheckCheck, Globe, X, Image as ImageIcon, Search, Reply, Mic, Square, Pin, PinOff } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -10,6 +10,7 @@ import { useCall } from "../context/CallContext";
 
 export default function ChatRoom() {
   const { recipientId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { t, language } = useLanguage();
   const { startCall } = useCall();
@@ -18,6 +19,7 @@ export default function ChatRoom() {
   const [recipient, setRecipient] = useState<any>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [otherUserTyping, setOtherUserTyping] = useState(false);
+  const [isAITyping, setIsAITyping] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [editingMessage, setEditingMessage] = useState<any>(null);
@@ -126,6 +128,28 @@ export default function ChatRoom() {
         });
 
         return () => unsubscribe();
+      } else if (recipientId === "ai_assistant") {
+        setRecipient({ id: "ai_assistant", username: "AI Assistant", status: "online", avatar: "https://cdn-icons-png.flaticon.com/512/4712/4712035.png" });
+        
+        const q = query(
+          collection(db, "messages"),
+          where("roomId", "==", `ai_chat_${user.id}`),
+          orderBy("timestamp", "asc")
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const msgs = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              timestamp: (data as any).timestamp?.toDate()
+            };
+          });
+          setMessages(msgs);
+        });
+
+        return () => unsubscribe();
       } else {
         // Fetch recipient info
         const fetchRecipient = async () => {
@@ -200,8 +224,11 @@ export default function ChatRoom() {
           senderName: replyingTo.senderName
         };
       }
-
-      if (recipientId === "global" || recipientId.startsWith("channel_")) {
+  
+      if (recipientId === "ai_assistant") {
+        messageData.roomId = `ai_chat_${user.id}`;
+        messageData.recipientId = "ai_assistant";
+      } else if (recipientId === "global" || recipientId.startsWith("channel_")) {
         messageData.roomId = recipientId;
       } else {
         messageData.recipientId = recipientId;
@@ -212,6 +239,34 @@ export default function ChatRoom() {
       setImagePreview(null);
       setVoiceBlob(null);
       setReplyingTo(null);
+
+      // AI Assistant response logic
+      if (recipientId === "ai_assistant") {
+        setIsAITyping(true);
+        const { getAIResponse } = await import("../services/geminiService");
+        
+        // Prepare history for AI
+        const history = messages.slice(-10).map(m => ({
+          role: m.senderId === user.id ? "user" : "model",
+          parts: [{ text: m.text }]
+        }));
+
+        const aiResponseText = await getAIResponse(newMessage.trim(), history);
+        setIsAITyping(false);
+
+        const aiMessageData = {
+          senderId: "ai_assistant",
+          senderName: "AI Assistant",
+          senderAvatar: "https://cdn-icons-png.flaticon.com/512/4712/4712035.png",
+          text: aiResponseText,
+          timestamp: Timestamp.now(),
+          status: "read",
+          roomId: `ai_chat_${user.id}`,
+          recipientId: user.id
+        };
+
+        await addDoc(collection(db, "messages"), aiMessageData);
+      }
     } catch (error) {
       console.error("Failed to send message", error);
     }
@@ -439,13 +494,15 @@ export default function ChatRoom() {
   };
 
   const clearChat = async () => {
-    if (user?.role !== 'admin') return;
+    if (user?.role !== 'admin' && recipientId !== 'ai_assistant') return;
     if (!window.confirm(t("confirmClearChat"))) return;
     
     try {
       let q;
       if (recipientId === 'global' || recipientId?.startsWith('channel_')) {
         q = query(collection(db, "messages"), where("roomId", "==", recipientId));
+      } else if (recipientId === 'ai_assistant') {
+        q = query(collection(db, "messages"), where("roomId", "==", `ai_chat_${user.id}`));
       } else {
         // Clear direct messages (optional, maybe just for admin)
         q = query(
@@ -487,7 +544,7 @@ export default function ChatRoom() {
                   {recipientId === "global" ? t("globalChat") : (recipient?.username || "...")}
                 </h2>
                 <p className="text-xs text-zinc-500">
-                  {otherUserTyping ? (
+                  {otherUserTyping || isAITyping ? (
                     <span className="text-emerald-500 animate-pulse">{t("typing")}...</span>
                   ) : (
                     recipientId === "global" ? t("globalChatDesc") : (recipient?.status === "online" ? t("online") : t("offline"))
@@ -496,7 +553,7 @@ export default function ChatRoom() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {user?.role === 'admin' && (recipientId === 'global' || recipientId?.startsWith('channel_')) && (
+            {((user?.role === 'admin' && (recipientId === 'global' || recipientId?.startsWith('channel_'))) || recipientId === 'ai_assistant') && (
               <button 
                 onClick={clearChat}
                 className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-red-500"
@@ -505,18 +562,24 @@ export default function ChatRoom() {
                 <Trash2 size={20} />
               </button>
             )}
-            <button 
-              onClick={() => recipientId && startCall(recipientId, 'audio')}
-              className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500"
-            >
-              <Phone size={20} />
-            </button>
-            <button 
-              onClick={() => recipientId && startCall(recipientId, 'video')}
-              className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500"
-            >
-              <Video size={20} />
-            </button>
+            {recipientId !== 'ai_assistant' && recipientId !== 'global' && !recipientId?.startsWith('channel_') && (
+              <>
+                <button 
+                  onClick={() => recipientId && startCall(recipientId, 'audio')}
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500"
+                  title={t("audioCall")}
+                >
+                  <Phone size={20} />
+                </button>
+                <button 
+                  onClick={() => recipientId && startCall(recipientId, 'video')}
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500"
+                  title={t("videoCall")}
+                >
+                  <Video size={20} />
+                </button>
+              </>
+            )}
             <button 
               onClick={() => setShowSearch(!showSearch)}
               className={`p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors ${showSearch ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "text-zinc-500"}`}
@@ -529,12 +592,14 @@ export default function ChatRoom() {
             >
               <ImageIcon size={20} />
             </button>
-            <button 
-              onClick={() => setShowPollCreator(true)}
-              className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500"
-            >
-              <Check size={20} />
-            </button>
+            {recipientId !== 'ai_assistant' && (
+              <button 
+                onClick={() => setShowPollCreator(true)}
+                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500"
+              >
+                <Check size={20} />
+              </button>
+            )}
             <button className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-500"><MoreVertical size={20} /></button>
           </div>
         </header>
@@ -813,13 +878,15 @@ export default function ChatRoom() {
               ref={fileInputRef} 
               onChange={handleImageSelect}
             />
-            <button 
-              type="button" 
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"
-            >
-              <Paperclip size={20} />
-            </button>
+            {recipientId !== 'ai_assistant' && (
+              <button 
+                type="button" 
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"
+              >
+                <Paperclip size={20} />
+              </button>
+            )}
             <div className="flex-1 relative">
               <input
                 type="text"
@@ -835,13 +902,15 @@ export default function ChatRoom() {
                 placeholder={isRecording ? "Recording..." : t("typeMessage")}
                 className="w-full pl-4 pr-10 py-2.5 bg-zinc-100 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm disabled:opacity-50"
               />
-            <button 
-              type="button" 
-              onClick={() => setShowStickerPicker(!showStickerPicker)}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors ${showStickerPicker ? "text-emerald-500" : "text-zinc-500 hover:text-emerald-500"}`}
-            >
-              <Smile size={20} />
-            </button>
+            {recipientId !== 'ai_assistant' && (
+              <button 
+                type="button" 
+                onClick={() => setShowStickerPicker(!showStickerPicker)}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors ${showStickerPicker ? "text-emerald-500" : "text-zinc-500 hover:text-emerald-500"}`}
+              >
+                <Smile size={20} />
+              </button>
+            )}
             {showStickerPicker && (
               <div className="absolute bottom-full right-0 mb-2 p-3 bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 w-64 animate-in fade-in zoom-in duration-200">
                 <div className="grid grid-cols-4 gap-2">
@@ -867,7 +936,7 @@ export default function ChatRoom() {
               </div>
             )}
           </div>
-          {!newMessage.trim() && !imagePreview && !voiceBlob && !editingMessage ? (
+          {!newMessage.trim() && !imagePreview && !voiceBlob && !editingMessage && recipientId !== 'ai_assistant' ? (
             <button
               type="button"
               onMouseDown={startRecording}
@@ -1008,9 +1077,32 @@ export default function ChatRoom() {
                     </p>
                   </div>
 
+                  <div className="flex gap-2 w-full mb-2">
+                    <button 
+                      onClick={() => {
+                        startCall(selectedUser.id, 'audio');
+                        setSelectedUser(null);
+                      }}
+                      className="flex-1 py-3 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 font-bold rounded-2xl transition-all flex items-center justify-center gap-2"
+                    >
+                      <Phone size={18} />
+                      {t("audioCall")}
+                    </button>
+                    <button 
+                      onClick={() => {
+                        startCall(selectedUser.id, 'video');
+                        setSelectedUser(null);
+                      }}
+                      className="flex-1 py-3 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 font-bold rounded-2xl transition-all flex items-center justify-center gap-2"
+                    >
+                      <Video size={18} />
+                      {t("videoCall")}
+                    </button>
+                  </div>
+
                   <button 
                     onClick={() => {
-                      // Logic to start a direct chat
+                      navigate(`/chat/${selectedUser.id}`);
                       setSelectedUser(null);
                     }}
                     className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl transition-all shadow-lg shadow-emerald-500/20"

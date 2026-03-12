@@ -85,7 +85,7 @@ service cloud.firestore {
 
     function isValidMessage(data) {
       return data.keys().hasAll(['senderId', 'text', 'timestamp']) &&
-             data.senderId == request.auth.uid &&
+             (data.senderId == request.auth.uid || (data.senderId == "ai_assistant" && data.recipientId == request.auth.uid)) &&
              data.text is string && data.text.size() <= 1000 &&
              data.timestamp is timestamp &&
              (!('roomId' in data) || data.roomId is string) &&
@@ -132,6 +132,7 @@ service cloud.firestore {
         resource.data.recipientId == request.auth.uid ||
         resource.data.roomId == "global" ||
         (resource.data.roomId != null && resource.data.roomId.matches("^channel_.*")) ||
+        (resource.data.roomId != null && resource.data.roomId == "ai_chat_" + request.auth.uid) ||
         (resource.data.roomId != null && 
          exists(/databases/$(database)/documents/rooms/$(resource.data.roomId)) && 
          request.auth.uid in get(/databases/$(database)/documents/rooms/$(resource.data.roomId)).data.members)
@@ -140,7 +141,9 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         (resource.data.recipientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reactions'])) ||
         (resource.data.senderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'text', 'isEdited', 'isPinned'])) ||
-        (resource.data.roomId != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'isPinned', 'poll'])) ||
+        (resource.data.roomId == "global" && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'isPinned', 'poll'])) ||
+        (resource.data.roomId != null && resource.data.roomId.matches("^channel_.*") && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'isPinned', 'poll'])) ||
+        (resource.data.roomId != null && resource.data.roomId == "ai_chat_" + request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'isPinned'])) ||
         isAdmin()
       );
       allow delete: if isAuthenticated() && (resource.data.senderId == request.auth.uid || isAdmin());

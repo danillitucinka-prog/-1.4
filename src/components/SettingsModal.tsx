@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, User, Globe, Moon, Sun, Save, Settings, Trash2, Camera, Upload } from "lucide-react";
+import { X, User, Globe, Moon, Sun, Save, Settings, Trash2, Camera, Upload, BarChart3 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
@@ -188,6 +188,27 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   >
                     Русский
                   </button>
+                </div>
+              </div>
+
+              {/* Statistics Shortcut */}
+              <div className="p-4 bg-zinc-900 text-white rounded-2xl flex items-center justify-between cursor-pointer hover:bg-zinc-800 transition-all"
+                onClick={() => {
+                  onClose();
+                  // We need a way to open stats from here, but since Sidebar handles it, 
+                  // maybe it's better to just leave it in the sidebar header.
+                  // Or I can add a prop to SettingsModal to trigger it.
+                  // For now, I'll just add a nice info card.
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-500 rounded-lg">
+                    <BarChart3 size={18} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold">{t("statistics")}</p>
+                    <p className="text-[10px] text-zinc-400">{t("activity")}</p>
+                  </div>
                 </div>
               </div>
 

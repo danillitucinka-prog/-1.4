@@ -23,6 +23,7 @@ interface AuthContextType {
   loading: boolean;
   logout: () => Promise<void>;
   cleanupGuests: () => Promise<void>;
+  deleteSingleUser: (userId: string) => Promise<void>;
   deleteAllUsers: () => Promise<void>;
   deleteAllMessages: () => Promise<void>;
   deleteAllChannels: () => Promise<void>;
@@ -152,6 +153,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const deleteSingleUser = async (userId: string) => {
+    if (user?.role !== 'admin') return;
+    try {
+      await deleteDoc(doc(db, "users", userId));
+      console.log(`Successfully deleted user ${userId}`);
+    } catch (error) {
+      console.error("Failed to delete user", error);
+    }
+  };
+
   const deleteAllUsers = async () => {
     if (user?.role !== 'admin') return;
     try {
@@ -192,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, logout, cleanupGuests, deleteAllUsers, deleteAllMessages, deleteAllChannels }}>
+    <AuthContext.Provider value={{ user, loading, logout, cleanupGuests, deleteSingleUser, deleteAllUsers, deleteAllMessages, deleteAllChannels }}>
       {children}
     </AuthContext.Provider>
   );

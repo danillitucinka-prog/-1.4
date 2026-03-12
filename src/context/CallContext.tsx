@@ -57,7 +57,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, [user]);
 
-  const cleanup = () => {
+  const cleanup = async () => {
     if (pc.current) {
       pc.current.close();
       pc.current = null;
@@ -66,6 +66,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       localStream.getTracks().forEach(track => track.stop());
       setLocalStream(null);
     }
+    
+    // Cleanup Firestore state
+    if (user) {
+      try {
+        await deleteDoc(doc(db, "calls", user.id));
+      } catch (e) {
+        console.error("Failed to delete call doc", e);
+      }
+    }
+
     setRemoteStream(null);
     setCall(null);
     setIncomingCall(null);
